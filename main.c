@@ -505,8 +505,8 @@ task usercontrol()
 			iteration59++;
 		}
 		
-		if(iteration72 == 9){ waitForReleaseSpeedButton(); fw.TargetSpeed = 72; }
-		if(iteration59 == 9){ waitForReleaseSpeedButton(); fw.TargetSpeed = 72; }
+		if(iteration72 == 10){ waitForReleaseSpeedButton(); fw.TargetSpeed = 72; }
+		if(iteration59 == 10){ waitForReleaseSpeedButton(); fw.TargetSpeed = 72; }
 		
 		// Feed Control
 		if(vexRT[Btn6U] == 1)
