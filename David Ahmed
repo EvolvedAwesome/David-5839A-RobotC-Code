@@ -454,17 +454,24 @@ task autonomous()
 //
 /////////////////////////////////////////////////////////////////////////////////////////
 
+bool buttonPreviouslyPressed = false;
 int iteration72;
 int iteration59;
 void waitForReleaseSpeedButton()
 {
-	if(vexRT[HIGH_SPEED_BUTTON72] == 0)
+	if(vexRT[Btn8L] == 0)
 	{
 		iteration72 = 0;
+		buttonPreviouslyPressed = false;
 	}
-	if(vexRT[HIGH_SPEED_BUTTON59] == 0)
+	if(vexRT[Btn8U] == 0)
 	{
 		iteration59 = 0;
+		buttonPreviouslyPressed = false;
+	}
+	else
+	{
+		wait1Msec(5);
 	}
 }
 
@@ -483,10 +490,12 @@ task usercontrol()
 		if(vexRT[Btn8L] == 1)
 		{
 			fw.TargetSpeed = 72;
+			buttonPreviouslyPressed = true;
 		}
 		else if(vexRT[Btn8U] == 1)
 		{
 			fw.TargetSpeed = 59;
+			buttonPreviouslyPressed = true;
 		}
 		else if(vexRT[Btn8D] == 1 || vexRT[Btn8R] == 1)
 		{
@@ -494,12 +503,12 @@ task usercontrol()
 		}
 		
 		// up to 127 for 9 iterations button
-		if(vexRT[HIGH_SPEED_BUTTON72] == 1 && iteration72 >= 9)
+		if((vexRT[Btn8L] == 1 && iteration72 >= 9) && buttonPreviouslyPressed == true)
 		{
 			fw.TargetSpeed = 127;
 			iteration72++;
 		}
-		else if(vexRT[HIGH_SPEED_BUTTON72] == 1 && iteration59 >= 9)
+		else if(vexRT[Btn8U] == 1 && iteration59 >= 9 && buttonPreviouslyPressed == true)
 		{
 			fw.TargetSpeed = 127;
 			iteration59++;
