@@ -509,11 +509,11 @@ task usercontrol()
 		if(iteration59 == 9){ waitForReleaseSpeedButton(); fw.TargetSpeed = 72; }
 		
 		// Feed Control
-		if(vexRT[Btn6U] == 1)
+		if(vexRT[Btn6U] == 1)							// if button is Pressed
 		{
 			feed.TargetSpeed = 127;
 		}
-		else if(vexRT[Btn6D] == 1)
+		else															// Otherwise
 		{
 			feed.TargetSpeed = vexMotorOff;
 		}
