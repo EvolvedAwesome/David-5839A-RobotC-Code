@@ -475,7 +475,6 @@ void waitForReleaseSpeedButton()
 	}
 }
 
-
 task usercontrol()
 {
 	
@@ -490,12 +489,10 @@ task usercontrol()
 		if(vexRT[Btn8L] == 1)
 		{
 			fw.TargetSpeed = 72;
-			buttonPreviouslyPressed = true;
 		}
 		else if(vexRT[Btn8U] == 1)
 		{
 			fw.TargetSpeed = 59;
-			buttonPreviouslyPressed = true;
 		}
 		else if(vexRT[Btn8D] == 1 || vexRT[Btn8R] == 1)
 		{
@@ -503,19 +500,19 @@ task usercontrol()
 		}
 		
 		// up to 127 for 9 iterations button
-		if((vexRT[Btn8L] == 1 && iteration72 >= 9) && buttonPreviouslyPressed == true)
+		if(vexRT[Btn7U] == 1 && iteration72 >= 9)
 		{
 			fw.TargetSpeed = 127;
 			iteration72++;
 		}
-		else if(vexRT[Btn8U] == 1 && iteration59 >= 9 && buttonPreviouslyPressed == true)
+		else if(vexRT[Btn7D] == 1 && iteration59 >= 9)
 		{
 			fw.TargetSpeed = 127;
 			iteration59++;
 		}
 		
-		if(iteration72 == 9){ waitForReleaseSpeedButton(); fw.TargetSpeed = 72; }
-		if(iteration59 == 9){ waitForReleaseSpeedButton(); fw.TargetSpeed = 72; }
+		if(iteration72 == 10){ waitForReleaseSpeedButton(); fw.TargetSpeed = 72; }
+		if(iteration59 == 10){ waitForReleaseSpeedButton(); fw.TargetSpeed = 59; }
 		
 		// Feed Control
 		if(vexRT[Btn6U] == 1)							// if button is Pressed
