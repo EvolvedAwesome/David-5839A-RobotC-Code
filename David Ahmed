@@ -1,4 +1,3 @@
-
 #pragma config(I2C_Usage, I2C1, i2cSensors)
 #pragma config(Sensor, I2C_1,  ,               sensorQuadEncoderOnI2CPort,    , AutoAssign)
 #pragma config(Sensor, I2C_2,  ,               sensorQuadEncoderOnI2CPort,    , AutoAssign)
@@ -24,9 +23,186 @@
 #define vexMotorMin -127
 #define vexMotorOff 0
 
-// Change this to change button set high speed on Flywheel
-#define HIGH_SPEED_BUTTON72 Btn7D
-#define HIGH_SPEED_BUTTON59 Btn7U
+// Update inteval (in mS) for the flywheel control loop
+#define FW_LOOP_SPEED              25
+
+// Maximum power we want to send to the flywheel motors
+#define FW_MAX_POWER              127
+
+// encoder counts per revolution depending on motor
+#define MOTOR_TPR_269           240.448
+#define MOTOR_TPR_393R          261.333
+#define MOTOR_TPR_393S          392
+#define MOTOR_TPR_393T          627.2
+#define MOTOR_TPR_QUAD          360.0
+
+// Structure to gather all the flywheel ralated data
+typedef struct _fw_controller 
+{
+    long            counter;                
+
+    // encoder tick per revolution
+    float           ticks_per_rev;          
+
+    // Encoder
+    long            e_current;              
+    long            e_last;                 
+
+    // velocity measurement
+    float           v_current;              
+    long            v_time;                 
+
+    // TBH control algorithm variables
+    long            target;                 
+    long            current;                
+    long            last;                   
+    float           error;                  
+    float           last_error;             
+    float           gain;                   
+    float           drive;                  
+    float           drive_at_zero;          
+    long            first_cross;            
+    float           drive_approx;           
+
+    // final motor drive
+    long            motor_drive;            
+    } fw_controller;
+
+// Make the controller global for easy debugging
+static  fw_controller   flywheel;
+
+void
+FwMotorSet( int value )
+{
+	motor[tlLauncher] = value;
+	motor[trLauncher] = value;
+	motor[brLauncher] = value;
+	motor[blLauncher] = value;
+}
+
+long
+FwMotorEncoderGet()
+{
+    return( nMotorEncoder[ blLauncher ] );
+}
+
+void
+FwVelocitySet( fw_controller *fw, int velocity, float predicted_drive )
+{
+    // set target velocity (motor rpm)
+    fw->target        = velocity;
+
+    // Set error so zero crossing is correctly detected
+    fw->error         = fw->target - fw->current;
+    fw->last_error    = fw->error;
+
+    // Set predicted open loop drive value
+    fw->drive_approx  = predicted_drive;
+    // Set flag to detect first zero crossing
+    fw->first_cross   = 1;
+    // clear tbh variable
+    fw->drive_at_zero = 0;
+}
+
+void
+FwCalculateSpeed( fw_controller *fw )
+{
+    int     delta_ms;
+    int     delta_enc;
+
+    // Get current encoder value
+    fw->e_current = FwMotorEncoderGet();
+
+    delta_ms   = nSysTime - fw->v_time;
+    fw->v_time = nSysTime;
+
+    // Change in encoder count
+    delta_enc = (fw->e_current - fw->e_last);
+
+    fw->e_last = fw->e_current;
+
+    // Calculate velocity in rpm
+    fw->v_current = (1000.0 / delta_ms) * delta_enc * 60.0 / fw->ticks_per_rev;
+}
+
+void
+FwControlUpdateVelocityTbh( fw_controller *fw )
+{
+    // calculate error in velocity
+    // target is desired velocity
+    // current is measured velocity
+    fw->error = fw->target - fw->current;
+
+    // Use Kp as gain
+    fw->drive =  fw->drive + (fw->error * fw->gain);
+
+    // Clip - we are only going forwards
+    if( fw->drive > 1 )
+          fw->drive = 1;
+    if( fw->drive < 0 )
+          fw->drive = 0;
+
+    // Check for zero crossing
+    if( sgn(fw->error) != sgn(fw->last_error) ) {
+
+        // First zero crossing after a new set velocity command
+        if( fw->first_cross ) {
+
+            // Set drive to the open loop approximation
+            fw->drive = fw->drive_approx;
+            fw->first_cross = 0;
+        }
+        else
+            fw->drive = 0.5 * ( fw->drive + fw->drive_at_zero );
+
+        // Save this drive value in the "tbh" variable
+        fw->drive_at_zero = fw->drive;
+    }
+
+    // Save last error
+    fw->last_error = fw->error;
+}
+
+task
+FwControlTask()
+{
+    fw_controller *fw = &flywheel;
+
+    // Set the gain
+    fw->gain = 0.00025;
+
+    // Set the encoder ticks per revolution
+    fw->ticks_per_rev = MOTOR_TPR_393S;
+
+    while(true)
+        {
+        // debug counter
+        fw->counter++;
+
+        // Calculate velocity
+        FwCalculateSpeed( fw );
+
+        // Set current speed for the tbh calculation code
+        fw->current = fw->v_current;
+
+        // Do the velocity TBH calculations
+        FwControlUpdateVelocityTbh( fw ) ;
+
+        // Scale drive into the range the motors need
+        fw->motor_drive  = (fw->drive * FW_MAX_POWER) + 0.5;
+
+        // Final Limit of motor values - don't really need this
+        if( fw->motor_drive >  127 ) fw->motor_drive =  127;
+        if( fw->motor_drive < -127 ) fw->motor_drive = -127;
+
+        // and finally set the motor control value
+        FwMotorSet( fw->motor_drive );
+
+        // Run at somewhere between 20 and 50mS
+        wait1Msec( FW_LOOP_SPEED );
+        }
+
+}
 
 // LCD Display Variables
 int count = 0;
@@ -41,20 +217,8 @@ int X2 = 0, Y1 = 0, X1 = 0, threshold = 15;
 typedef struct{
 	float TargetSpeed;
 	float CurrentSpeed;
-} flywheel, treadmill;
-flywheel fw;
+} treadmill;
 treadmill feed;
-
-// Function to update Flywheel Speed
-void UpdateFlySpeed()
-{
-	fw.CurrentSpeed = fw.TargetSpeed;
-	motor[tlLauncher] = fw.CurrentSpeed;
-	motor[trLauncher] = fw.CurrentSpeed;
-	motor[brLauncher] = fw.CurrentSpeed;
-	motor[blLauncher] = fw.CurrentSpeed;
-}
-
 
 // Function to update Flywheel Speed
 void UpdateTreadmillSpeed()
@@ -454,24 +618,13 @@ task autonomous()
 //
 /////////////////////////////////////////////////////////////////////////////////////////
 
-bool buttonPreviouslyPressed = false;
-int iteration72;
-int iteration59;
+int fw_count;
+
 void waitForReleaseSpeedButton()
 {
 	if(vexRT[Btn8L] == 0)
 	{
-		iteration72 = 0;
-		buttonPreviouslyPressed = false;
-	}
-	if(vexRT[Btn8U] == 0)
-	{
-		iteration59 = 0;
-		buttonPreviouslyPressed = false;
-	}
-	else
-	{
-		wait1Msec(5);
+		fw_count = 0;
 	}
 }
 
@@ -481,54 +634,48 @@ task usercontrol()
 	// Start the drive task to let you drive! with included deadzone :)
 	startTask( Drive );
 
+  	bLCDBacklight = true;
+
+  	// Start the flywheel task
+  	startTask( FwControlTask );
+
 	while (true)
 	{
 
-		showBatteryLevel();
+	showBatteryLevel();
 		
-		if(vexRT[Btn8L] == 1)
-		{
-			fw.TargetSpeed = 72;
-		}
-		else if(vexRT[Btn8U] == 1)
-		{
-			fw.TargetSpeed = 59;
-		}
-		else if(vexRT[Btn8D] == 1 || vexRT[Btn8R] == 1)
-		{
-			fw.TargetSpeed = vexMotorOff;
-		}
-		
-		// up to 127 for 9 iterations button
-		if(vexRT[Btn7U] == 1 && iteration72 >= 9)
-		{
-			fw.TargetSpeed = 127;
-			iteration72++;
-		}
-		else if(vexRT[Btn7D] == 1 && iteration59 >= 9)
-		{
-			fw.TargetSpeed = 127;
-			iteration59++;
-		}
-		
-		if(iteration72 == 10){ waitForReleaseSpeedButton(); fw.TargetSpeed = 72; }
-		if(iteration59 == 10){ waitForReleaseSpeedButton(); fw.TargetSpeed = 59; }
-		
-		// Feed Control
-		if(vexRT[Btn6U] == 1)							// if button is Pressed
-		{
-			feed.TargetSpeed = 127;
-		}
-		else															// Otherwise
-		{
-			feed.TargetSpeed = vexMotorOff;
-		}
-		
-		UpdateFlySpeed();
-		UpdateTreadmillSpeed();
-		
-		// dont hog CPU
-		wait1Msec(30);
+	// Ajust Flywheel target velocity
+    if( vexRT[ Btn8U ] == 1 ) {
+       FwVelocitySet( &flywheel, 72, 0.38 );
+    }
+    if( vexRT[ Btn8D ] == 1 ) {
+       FwVelocitySet( &flywheel, 00, 0 );
+	}
+    if( vexRT[ Btn8L ] == 1 && fw_count <= 9) {
+       FwVelocitySet( &flywheel, 144, 0.55 );
+       fw_count++;
+    }
+
+    if(fw_count == 9)
+    { 
+    	waitForReleaseSpeedButton(); 
+    	FwVelocitySet( &flywheel, 72, 0.38 );
+    }
+
+	// Feed Control
+	if(vexRT[Btn6U] == 1)						// if button is Pressed
+	{
+		feed.TargetSpeed = 127;
+	}
+	else										// Otherwise
+	{
+		feed.TargetSpeed = vexMotorOff;
+	}
+	
+	UpdateTreadmillSpeed();
+	
+	// dont hog CPU
+	wait1Msec(20);
 
 	}
 }
